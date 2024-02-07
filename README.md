@@ -27,3 +27,10 @@ arc-ingester --root "~/Library/Mobile Documents/iCloud~com~bigpaua~LearnerCoache
 ```
 
 see `arc-ingester --help` for more information.
+
+## TODO
+
+- Logging
+- Investigate using modified date as a replacement for hashing to determine if a file has changed
+    - At the very least, use the modified date to determine if a file has changed and then hash check the ones that have
+      the same modified date.
