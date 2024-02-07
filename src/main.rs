@@ -6,7 +6,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use clap::Parser;
 use itertools::Itertools;
-use sqlx::{Executor, FromRow};
+use sqlx::FromRow;
 use rayon::prelude::*;
 use serde_json::Value;
 use uuid::Uuid;
@@ -65,29 +65,6 @@ struct Place {
 
     #[serde(flatten)]
     rest: HashMap<String, Value>,
-}
-
-async fn init_db(db: &sqlx::PgPool) {
-    let init_query = r#"
-    CREATE TABLE IF NOT EXISTS place (
-        place_id UUID PRIMARY KEY not null,
-        json JSONB NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS timeline_item (
-        item_id UUID PRIMARY KEY not null,
-        json JSONB NOT NULL,
-        place_id UUID,
-        end_date TIMESTAMP WITH TIME ZONE NOT NULL,
-        foreign key (place_id) references place (place_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS raw_files (date TEXT PRIMARY KEY not null, sha256 TEXT not null, json JSONB NOT NULL)
-    "#;
-
-    db.execute(init_query)
-        .await
-        .unwrap();
 }
 
 async fn find_updated(db: &sqlx::PgPool, files: ReadDir) -> Vec<UpdatedFile> {
@@ -155,7 +132,10 @@ async fn main() {
         .await
         .unwrap();
 
-    init_db(&db).await;
+    sqlx::migrate!()
+        .run(&db)
+        .await
+        .unwrap();
 
     let need_refresh = find_updated(&db, files).await;
 
