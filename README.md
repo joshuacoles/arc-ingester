@@ -34,3 +34,6 @@ see `arc-ingester --help` for more information.
 - Investigate using modified date as a replacement for hashing to determine if a file has changed
     - At the very least, use the modified date to determine if a file has changed and then hash check the ones that have
       the same modified date.
+- Multithreading
+- Error handling
+- What happens if some places or activities are deleted from the app? I think atm they will be left in the database.

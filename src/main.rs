@@ -148,8 +148,8 @@ async fn main() {
             .execute(&db).await.unwrap();
     }
 
-    // Take all of the changed files' timeline items, and group them by item_id, then take the latest one.
-    // If we are needing to updated the database it will be with this one.
+    // Take all the changed files' timeline items, and group them by item_id, then take the latest one.
+    // If we are needing to update the database it will be with this one.
     let possibly_timeline_items = need_refresh.into_iter()
         .flat_map(|f| f.json.timeline_items)
         .group_by(|item| item.item_id.clone())
