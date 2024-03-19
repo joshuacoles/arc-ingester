@@ -37,3 +37,4 @@ see `arc-ingester --help` for more information.
 - Multithreading
 - Error handling
 - What happens if some places or activities are deleted from the app? I think atm they will be left in the database.
+- Auto build and release
