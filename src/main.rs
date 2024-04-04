@@ -2,12 +2,10 @@ use std::collections::HashMap;
 use std::fs::ReadDir;
 use std::io::Read;
 use std::path::PathBuf;
-use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use clap::Parser;
 use itertools::Itertools;
 use sqlx::FromRow;
-use rayon::prelude::*;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -69,58 +67,51 @@ struct Place {
     rest: HashMap<String, Value>,
 }
 
-async fn find_updated(db: &sqlx::PgPool, files: ReadDir) -> Vec<UpdatedFile> {
-    let date_hashes: Vec<DateHash> = sqlx::query_as("SELECT date, sha256 FROM raw_files")
-        .fetch_all(db)
-        .await
-        .unwrap();
-
-    let date_hashes: Arc<HashMap<String, String>> = Arc::new(date_hashes.into_iter()
-        .map(|dh| (dh.date, dh.sha256))
-        .collect());
-
-    let date_hashes = &date_hashes;
-
-    // Find the files that need to be refreshed, based on the sha256 hash of the file compared to
-    // the hash stored in the database.
-    let need_refresh = files.into_iter()
+fn hash_files(files: ReadDir) -> impl Iterator<Item=(String, PathBuf, String)> {
+    files.into_iter()
         .map(|f| f.unwrap().path())
-        .filter_map(|path| {
-            // Extract the date from the file name
+        .map(|path| {
             let date = {
                 let file_name = path.file_name().unwrap().to_str().unwrap();
                 let i = file_name.find('.').unwrap();
                 &file_name[..i]
             };
 
-            let current_hash = sha256::try_digest(&path).unwrap();
-            let existing_hash = date_hashes.get(date);
-
-            if let Some(existing_hash) = existing_hash {
-                if current_hash == *existing_hash {
-                    return None;
-                }
-            }
-
-            let bytes = std::fs::read(&path).unwrap();
-
-            return Some((date.to_string(), current_hash, bytes));
+            let hash = sha256::try_digest(&path).unwrap();
+            (date.to_string(), path, hash)
         })
-        .collect_vec();
+}
 
-    let decompressed = need_refresh.par_iter().map(|(date, new_hash, bytes)| {
+async fn find_updated(db: &sqlx::PgPool, files: ReadDir) -> Vec<UpdatedFile> {
+    let date_hashes: Vec<DateHash> = sqlx::query_as("SELECT date, sha256 FROM raw_files")
+        .fetch_all(db)
+        .await
+        .unwrap();
+
+    let date_hashes: HashMap<String, String> = date_hashes.into_iter()
+        .map(|dh| (dh.date, dh.sha256))
+        .collect();
+
+    let new_hashes = hash_files(files);
+
+    new_hashes.filter_map(|(date, path, new_hash)| {
+        if let Some(existing_hash) = date_hashes.get(&date) {
+            if new_hash == *existing_hash {
+                return None;
+            }
+        }
+
+        let bytes = std::fs::read(&path).unwrap();
         let mut decoder = flate2::bufread::GzDecoder::new(&bytes[..]);
         let mut string = String::new();
         decoder.read_to_string(&mut string).unwrap();
 
-        UpdatedFile {
+        Some(UpdatedFile {
             date: date.clone(),
             sha256: new_hash.clone(),
             json: serde_json::from_str(&string).unwrap(),
-        }
-    }).collect::<Vec<_>>();
-
-    decompressed
+        })
+    }).collect_vec()
 }
 
 #[tokio::main]
