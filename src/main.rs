@@ -85,7 +85,7 @@ async fn find_updated(db: &sqlx::PgPool, files: ReadDir) -> Vec<UpdatedFile> {
     // the hash stored in the database.
     let need_refresh = files.into_iter()
         .map(|f| f.unwrap().path())
-        .map(|path| async move {
+        .filter_map(|path| {
             // Extract the date from the file name
             let date = {
                 let file_name = path.file_name().unwrap().to_str().unwrap();
@@ -93,8 +93,7 @@ async fn find_updated(db: &sqlx::PgPool, files: ReadDir) -> Vec<UpdatedFile> {
                 &file_name[..i]
             };
 
-            let bytes = tokio::fs::read(&path).await.unwrap();
-            let current_hash = sha256::digest(&bytes);
+            let current_hash = sha256::try_digest(&path).unwrap();
             let existing_hash = date_hashes.get(date);
 
             if let Some(existing_hash) = existing_hash {
@@ -103,12 +102,11 @@ async fn find_updated(db: &sqlx::PgPool, files: ReadDir) -> Vec<UpdatedFile> {
                 }
             }
 
-            return Some((date.to_string(), current_hash, bytes));
-        });
+            let bytes = std::fs::read(&path).unwrap();
 
-    let need_refresh = futures::future::join_all(need_refresh).await.into_iter()
-        .filter_map(|x| x)
-        .collect::<Vec<_>>();
+            return Some((date.to_string(), current_hash, bytes));
+        })
+        .collect_vec();
 
     let decompressed = need_refresh.par_iter().map(|(date, new_hash, bytes)| {
         let mut decoder = flate2::bufread::GzDecoder::new(&bytes[..]);
