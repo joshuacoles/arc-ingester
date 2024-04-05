@@ -28,3 +28,5 @@ futures = "0.3.30"
 itertools = "0.12.1"
 chrono = { version = "0.4.33", features = ["serde"] }
 uuid = { version = "1.7.0", features = ["serde"] }
+testcontainers = "0.15.0"
+testcontainers-modules = { version = "0.3.6", features = ["postgres"] }

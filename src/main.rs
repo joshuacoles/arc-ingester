@@ -133,7 +133,7 @@ async fn main() {
 
     // Refresh the database with the new files
     for updated_file in &need_refresh {
-        sqlx::query("INSERT INTO raw_files (date, sha256, json) VALUES ($1, $2, $3 :: jsonb) ON CONFLICT (date) DO UPDATE SET sha256 = $2, json = $3 :: jsonb")
+        sqlx::query("INSERT INTO raw_files (date, sha256, json) VALUES ($1, $2, $3 :: jsonb) ON CONFLICT (date) DO UPDATE SET sha256 = excluded.sha256, json = excluded.json")
             .bind(&updated_file.date)
             .bind(&updated_file.sha256)
             .bind(&serde_json::to_value(&updated_file.json).unwrap())
