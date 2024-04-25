@@ -86,7 +86,7 @@ async fn find_updated(db: &sqlx::PgPool, files: ReadDir) -> Vec<UpdatedFile> {
     let date_hashes: Vec<DateHash> = sqlx::query_as("SELECT date, sha256 FROM raw_files")
         .fetch_all(db)
         .await
-        .unwrap();
+        .expect("Failed to fetch date hashes from database");
 
     let date_hashes: HashMap<String, String> = date_hashes.into_iter()
         .map(|dh| (dh.date, dh.sha256))
@@ -104,7 +104,14 @@ async fn find_updated(db: &sqlx::PgPool, files: ReadDir) -> Vec<UpdatedFile> {
         let bytes = std::fs::read(&path).unwrap();
         let mut decoder = flate2::bufread::GzDecoder::new(&bytes[..]);
         let mut string = String::new();
-        decoder.read_to_string(&mut string).unwrap();
+        match decoder.read_to_string(&mut string) {
+            Err(err) => {
+                eprintln!("Failed to parse file {path:?}");
+                eprintln!("Error {err:?}");
+                panic!("Error")
+            }
+            _ => {}
+        }
 
         Some(UpdatedFile {
             date: date.clone(),
@@ -118,18 +125,20 @@ async fn find_updated(db: &sqlx::PgPool, files: ReadDir) -> Vec<UpdatedFile> {
 async fn main() {
     let cli = Cli::parse();
     let daily_exports = cli.root.join("Export/JSON/Daily");
-    let files = std::fs::read_dir(daily_exports).unwrap();
+    let files = std::fs::read_dir(daily_exports)
+        .expect("Failed to access daily exports directory");
 
     let db = sqlx::PgPool::connect(&cli.conn)
         .await
-        .unwrap();
+        .expect("Failed to connect to postgres database");
 
     sqlx::migrate!()
         .run(&db)
         .await
-        .unwrap();
+        .expect("Failed to migrate postgres database");
 
-    let need_refresh = find_updated(&db, files).await;
+    let need_refresh = find_updated(&db, files)
+        .await;
 
     // Refresh the database with the new files
     for updated_file in &need_refresh {
