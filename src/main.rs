@@ -95,7 +95,7 @@ async fn find_updated(db: &sqlx::PgPool, files: ReadDir) -> Vec<UpdatedFile> {
     let new_hashes = hash_files(files);
 
     new_hashes.filter_map(|(date, path, new_hash)| {
-        tracing::debug!("Considering file for updates {path} (read as date: {date})");
+        tracing::debug!("Considering file for updates {path:?} (read as date: {date})");
         if let Some(existing_hash) = date_hashes.get(&date) {
             if new_hash == *existing_hash {
                 tracing::debug!("Found and matched to to existing hash");
