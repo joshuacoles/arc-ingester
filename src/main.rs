@@ -70,7 +70,7 @@ struct Place {
 fn hash_files(files: ReadDir) -> impl Iterator<Item=(String, PathBuf, String)> {
     files.into_iter()
         .map(|f| f.unwrap().path())
-        .filter_map(|p| p.extension().and_then(|ext| ext.to_str()).filter(|p| p == "gz"))
+        .filter(|p| p.extension().and_then(|ext| ext.to_str()).filter(|p| *p == "gz").is_some())
         .map(|path| {
             let date = {
                 let file_name = path.file_name().unwrap().to_str().unwrap();
