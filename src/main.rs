@@ -95,10 +95,16 @@ async fn find_updated(db: &sqlx::PgPool, files: ReadDir) -> Vec<UpdatedFile> {
     let new_hashes = hash_files(files);
 
     new_hashes.filter_map(|(date, path, new_hash)| {
+        tracing::debug!("Considering file for updates {path} (read as date: {date})");
         if let Some(existing_hash) = date_hashes.get(&date) {
             if new_hash == *existing_hash {
+                tracing::debug!("Found and matched to to existing hash");
                 return None;
+            } else {
+                tracing::debug!("Found existing hash but file does not match");
             }
+        } else {
+            tracing::debug!("No existing hash found");
         }
 
         let bytes = std::fs::read(&path).unwrap();
@@ -123,6 +129,8 @@ async fn find_updated(db: &sqlx::PgPool, files: ReadDir) -> Vec<UpdatedFile> {
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt::init();
+
     let cli = Cli::parse();
     let daily_exports = cli.root.join("Export/JSON/Daily");
     let files = std::fs::read_dir(daily_exports)
