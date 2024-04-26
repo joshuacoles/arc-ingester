@@ -5,8 +5,9 @@ use std::path::PathBuf;
 use chrono::{DateTime, Utc};
 use clap::Parser;
 use itertools::Itertools;
-use sqlx::{FromRow, PgPool, Pool, Postgres};
+use sqlx::{Executor, FromRow, PgPool, Pool, Postgres};
 use serde_json::Value;
+use tracing::instrument;
 use uuid::Uuid;
 
 #[derive(Parser, Debug)]
@@ -18,6 +19,9 @@ struct Cli {
     /// psql connection string
     #[arg(long, short, env = "ARC_DB")]
     conn: String,
+
+    #[arg(long)]
+    sql_only: bool,
 }
 
 #[derive(Debug, FromRow)]
@@ -83,7 +87,8 @@ fn hash_files(files: ReadDir) -> impl Iterator<Item=(String, PathBuf, String)> {
         })
 }
 
-async fn find_updated(db: &sqlx::PgPool, files: ReadDir) -> Vec<UpdatedFile> {
+#[instrument(skip(db, files))]
+async fn find_updated(db: &PgPool, files: ReadDir) -> Vec<UpdatedFile> {
     let date_hashes: Vec<DateHash> = sqlx::query_as("SELECT date, sha256 FROM raw_files")
         .fetch_all(db)
         .await
@@ -96,6 +101,9 @@ async fn find_updated(db: &sqlx::PgPool, files: ReadDir) -> Vec<UpdatedFile> {
     let new_hashes = hash_files(files);
 
     new_hashes.filter_map(|(date, path, new_hash)| {
+        let span = tracing::span!(tracing::Level::DEBUG, "considering_file", path = ?path, date = ?date);
+        let _enter = span.enter();
+
         tracing::debug!("Considering file for updates {path:?} (read as date: {date})");
         if let Some(existing_hash) = date_hashes.get(&date) {
             if new_hash == *existing_hash {
@@ -152,12 +160,26 @@ async fn main() -> anyhow::Result<()> {
     upload_files(&db, &need_refresh)
         .await?;
 
-    update_data(&db, need_refresh)
-        .await?;
+    if cli.sql_only {
+        update_data_sql(&db)
+            .await?;
+    } else {
+        update_data(&db, need_refresh)
+            .await?;
+    }
 
     Ok(())
 }
 
+#[instrument(skip(db))]
+async fn update_data_sql(db: &PgPool) -> anyhow::Result<()> {
+    db.execute(include_str!("../functions/update_places.sql")).await?;
+    db.execute(include_str!("../functions/update_timeline_items.sql")).await?;
+
+    Ok(())
+}
+
+#[instrument(skip(db, need_refresh))]
 async fn update_data(db: &Pool<Postgres>, need_refresh: Vec<UpdatedFile>) -> anyhow::Result<()> {
     // Take all the changed files' timeline items, and group them by item_id, then take the latest one.
     // If we are needing to update the database it will be with this one.
