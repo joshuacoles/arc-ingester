@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "with timelineItems as (select jsonb_array_elements(raw_files.json -> 'timelineItems') as timelineItem\n                       from raw_files\n                       where date = ANY ($1)),\n     max_last_saved as (select timelineItem ->> 'itemId'                          as itemId,\n                               max((timelineItem ->> 'lastSaved') :: timestamptz) as latest_last_saved\n                        from timelineItems\n                        group by timelineItem ->> 'itemId'),\n     unique_timline_items as (select distinct on (max_last_saved.itemId) *\n                              from max_last_saved\n                                       inner join timelineItems\n                                                  on timelineItems.timelineItem ->> 'itemId' = max_last_saved.itemId\n                                                      and (timelineItems.timelineItem ->> 'lastSaved') :: timestamptz =\n                                                          max_last_saved.latest_last_saved)\ninsert\ninto public.timeline_item (item_id, json, place_id, end_date, last_saved, server_last_updated)\nselect unique_timline_items.itemId :: uuid                                  as item_id,\n       unique_timline_items.timelineItem                                    as json,\n       (unique_timline_items.timelineItem -> 'place' ->> 'placeId') :: uuid as place_id,\n       (unique_timline_items.timelineItem ->> 'endDate') :: timestamptz     as end_date,\n       unique_timline_items.latest_last_saved :: timestamptz                as last_saved,\n       now()                                                                as server_last_updated\nfrom unique_timline_items\non conflict (item_id) do update set json                = excluded.json,\n                                    place_id            = excluded.place_id,\n                                    end_date            = excluded.end_date,\n                                    last_saved          = excluded.last_saved,\n                                    server_last_updated = excluded.server_last_updated\nwhere excluded.last_saved > public.timeline_item.last_saved\nreturning item_id;\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "item_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "ac15bfcd1737751e27388ffddfe8ec47fd7277be74c47a59484e4fc993671d43"
+}

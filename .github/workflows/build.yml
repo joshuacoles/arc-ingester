@@ -45,6 +45,8 @@ jobs:
 
       - name: Build release binary
         run: cargo build --release
+        env:
+          SQLX_OFFLINE: true
 
       - name: Upload binary
         uses: actions/upload-artifact@v3

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "with timelineItems as (select jsonb_array_elements(raw_files.json -> 'timelineItems') as timelineItem\n                       from raw_files\n                       where date = ANY ($1)),\n     places as (select distinct on (md5(timelineItem ->> 'place' :: text)) timelineItem -> 'place'                                  as place,\n                                                                           timelineItem -> 'place' ->> 'placeId'                    as placeId,\n                                                                           (timelineItem -> 'place' ->> 'lastSaved') :: timestamptz as lastSaved\n                from timelineItems\n                where timelineItem ->> 'place' is not null),\n     places_with_max_last_saved as (select place -> 'placeId'                          as placeId,\n                                           max((place ->> 'lastSaved') :: timestamptz) as latest_last_saved\n                                    from places\n                                    group by place -> 'placeId'),\n     latest_places as (select places.*\n                       from places_with_max_last_saved\n                                inner join places on places.place -> 'placeId' = places_with_max_last_saved.placeId and\n                                                     places.lastSaved =\n                                                     places_with_max_last_saved.latest_last_saved)\ninsert\ninto public.place (place_id, json, last_saved, server_last_updated)\nselect (placeId :: uuid) as place_id, place as json, lastSaved as last_saved, now() as server_last_updated\nfrom latest_places\non conflict (place_id) do update set json                = excluded.json,\n                                     last_saved          = excluded.last_saved,\n                                     server_last_updated = excluded.server_last_updated\nwhere excluded.last_saved > public.place.last_saved;\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f0402ce4a5c93837f39559bfb3358a7655f178080465f7abd7f7702d42474157"
+}

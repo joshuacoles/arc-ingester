@@ -1,5 +1,6 @@
 with timelineItems as (select jsonb_array_elements(raw_files.json -> 'timelineItems') as timelineItem
-                       from raw_files),
+                       from raw_files
+                       where date = ANY ($1)),
      places as (select distinct on (md5(timelineItem ->> 'place' :: text)) timelineItem -> 'place'                                  as place,
                                                                            timelineItem -> 'place' ->> 'placeId'                    as placeId,
                                                                            (timelineItem -> 'place' ->> 'lastSaved') :: timestamptz as lastSaved

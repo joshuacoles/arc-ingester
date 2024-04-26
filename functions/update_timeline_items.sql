@@ -1,5 +1,6 @@
 with timelineItems as (select jsonb_array_elements(raw_files.json -> 'timelineItems') as timelineItem
-                       from raw_files),
+                       from raw_files
+                       where date = ANY ($1)),
      max_last_saved as (select timelineItem ->> 'itemId'                          as itemId,
                                max((timelineItem ->> 'lastSaved') :: timestamptz) as latest_last_saved
                         from timelineItems

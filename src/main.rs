@@ -161,7 +161,7 @@ async fn main() -> anyhow::Result<()> {
         .await?;
 
     if cli.sql_only {
-        update_data_sql(&db)
+        update_data_sql(&db, need_refresh)
             .await?;
     } else {
         update_data(&db, need_refresh)
@@ -171,10 +171,23 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[instrument(skip(db))]
-async fn update_data_sql(db: &PgPool) -> anyhow::Result<()> {
-    db.execute(include_str!("../functions/update_places.sql")).await?;
-    db.execute(include_str!("../functions/update_timeline_items.sql")).await?;
+#[instrument(skip(db, need_refresh))]
+async fn update_data_sql(db: &PgPool, need_refresh: Vec<UpdatedFile>) -> anyhow::Result<()> {
+    let vec = need_refresh.iter()
+        .map(|d| d.date.clone())
+        .collect_vec();
+
+    let result = sqlx::query_file!("functions/update_places.sql", &vec)
+        .execute(db)
+        .await?;
+
+    tracing::info!("Updated {} places", result.rows_affected());
+
+    let updated = sqlx::query_file!("functions/update_timeline_items.sql", &vec)
+        .fetch_all(db)
+        .await?;
+
+    tracing::info!("Updated {} timeline items", updated.len());
 
     Ok(())
 }
